@@ -3,10 +3,10 @@ use std::sync::Arc;
 use anyhow::{Ok, Result};
 use itertools::Itertools;
 use url::Url;
-use amms::amms::{amm::AMM, uniswap_v2::UniswapV2Pool};
+use amms::amms::{amm::AMM, path::find_arb_paths_v2, uniswap_v2::UniswapV2Pool};
 use log::{info};
 use rust::constants::{
-    Env, MIN_WETH_THRESHOLD, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WEI, WETH_ADDRESS, WHITELIST_TOKENS
+    Env, MIN_WETH_THRESHOLD, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WEI, WETH_ADDRESS, WETH_AMOUNT_IN, WHITELIST_TOKENS
 };
 
 use alloy::{
@@ -85,19 +85,34 @@ async fn main() -> Result<()> {
     // or if you only want the map:
     //println!("State Map Length: {}", state.state.keys().len());
     //println!("State Map: {:#?}", state.state);
-    for p in state.state.values() {
-        println!("Variant: {:#?}", p.variant());
-    }
     let pools: Vec<&UniswapV2Pool> = state.state.values()
     .filter_map(|amm| match amm {
         AMM::UniswapV2Pool(pool) => Some(pool),
         _ => None,
     })
     .collect();
-    let max_hops = 5;
-    for p1 in pools.clone() {
-        println!("----Pool---");
-        println!("Pool: {:#?}", p1);
+    // let max_hops = 5;
+    // for p1 in pools.clone() {
+    //     println!("----Pool---");
+    //     println!("Pool: {:#?}", p1);
+    //     println!("\n\n");
+    // }
+    let amount_in = U256::from(WETH_AMOUNT_IN);
+    let paths = find_arb_paths_v2(pools.into_iter().cloned().collect(), WETH_ADDRESS);
+    for path in paths {
+        let amount_out = path.simulate(amount_in).expect("Simulation failed");
+        let pct_gain =  (amount_out - amount_in) * U256::from(10000) / amount_in;
+        // let (amount_out_surplus, overflow) = amount_out.overflowing_sub(U256::from(amount_in));
+        // let pct_gain = if overflow {
+        //     U256::ZERO
+        // } else {
+        //     amount_out_surplus * U256::from(10000) / U256::from(amount_in)
+        // };
+        println!("----Arb Path---");
+        println!("Path: {:#?}", path);
+        println!("Amount in: {}", amount_in);
+        println!("Simulated amount out: {}", amount_out);
+        println!("Percentage gain: {}%", pct_gain);
         println!("\n\n");
     }
     Ok(())

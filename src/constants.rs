@@ -4,7 +4,7 @@ use ethers::{
     prelude::Lazy,
     types::{Address, H160, U256, U64},
 };
-use std::{ops::Add, str::FromStr};
+use std::{ops::{Add, Mul}, str::FromStr};
 
 pub const UNISWAP_V2_FACTORY_ADDRESS: HexAddress =
     address!("5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
@@ -16,6 +16,8 @@ pub const USDT_ADDRESS: HexAddress = address!("dAC17F958D2ee523a2206206994597C13
 pub const DAI_ADDRESS: HexAddress = address!("6B175474E89094C44Da98b954EedeAC495271d0F");
 pub const WBTC_ADDRESS: HexAddress = address!("2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599");
 pub const MIN_WETH_THRESHOLD: u128 = 10u128.pow(19); // 10 WETH (18 decimals)
+pub const WETH_AMOUNT_IN: u128 = 5_800_000_000_000_000;
+
 
 pub static WEI: Lazy<U256> = Lazy::new(|| U256::from(10).pow(U256::from(18)));
 pub static GWEI: Lazy<U256> = Lazy::new(|| U256::from(10).pow(U256::from(9)));
