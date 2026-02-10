@@ -144,7 +144,7 @@ impl Bundler {
         }
 
         let pending_bundle = self.flashbots.inner().send_bundle(&bundle).await?;
-        let bundle_hash = pending_bundle.await?;
+        let bundle_hash = pending_bundle.await?.expect("bundler error");
         Ok(bundle_hash)
     }
 

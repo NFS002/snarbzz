@@ -5,12 +5,12 @@ use itertools::Itertools;
 use url::Url;
 use amms::amms::{amm::AMM, path::find_arb_paths_v2, uniswap_v2::UniswapV2Pool};
 use log::{info};
-use rust::constants::{
+use rust::{constants::{
     Env, MIN_WETH_THRESHOLD, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WEI, WETH_ADDRESS, WETH_AMOUNT_IN, WHITELIST_TOKENS
-};
+}, math::{format_percent_bp, percentage_change_bp}};
 
 use alloy::{
-    primitives::{Address, U256, address},
+    primitives::{Address, I256, U256, address},
     providers::ProviderBuilder,
     rpc::client::ClientBuilder,
 transports::layers::{RetryBackoffLayer, ThrottleLayer},
@@ -73,7 +73,7 @@ async fn main() -> Result<()> {
     let filters: Vec<PoolFilter> = vec![
         //PoolWhitelistFilter::new(vec![address!("88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640")]).into(),
         TokenWhitelistFilter::new(WHITELIST_TOKENS.to_vec()).into(),
-        ValueFilter::new(UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WETH_ADDRESS, U256::from(MIN_WETH_THRESHOLD), provider.clone()).into(),
+        //ValueFilter::new(UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WETH_ADDRESS, U256::from(MIN_WETH_THRESHOLD), provider.clone()).into(),
     ];
 
     let _state_space_manager = sync!(factories, filters, provider);
@@ -91,29 +91,26 @@ async fn main() -> Result<()> {
         _ => None,
     })
     .collect();
-    // let max_hops = 5;
-    // for p1 in pools.clone() {
-    //     println!("----Pool---");
-    //     println!("Pool: {:#?}", p1);
+    for p1 in pools.clone() {
+        println!("{:#?}\n\n", p1);
+    }
+    // let amount_in = U256::from(WETH_AMOUNT_IN);
+    // let paths = find_arb_paths_v2(pools.into_iter().cloned().collect(), WETH_ADDRESS);
+    // for path in paths {
+    //     let amount_out = path.simulate(amount_in).expect("Simulation failed");
+    //     let pct_gain_bp =  percentage_change_bp(amount_in, amount_out).unwrap_or(I256::ZERO);
+    //     // let (amount_out_surplus, overflow) = amount_out.overflowing_sub(U256::from(amount_in));
+    //     // let pct_gain = if overflow {
+    //     //     U256::ZERO
+    //     // } else {
+    //     //     amount_out_surplus * U256::from(10000) / U256::from(amount_in)
+    //     // };
+    //     println!("----Arb Path---");
+    //     println!("Path: {:#?}", path);
+    //     println!("Amount in: {}", amount_in);
+    //     println!("Simulated amount out: {}", amount_out);
+    //     println!("Percentage gain: {}%", format_percent_bp(pct_gain_bp));
     //     println!("\n\n");
     // }
-    let amount_in = U256::from(WETH_AMOUNT_IN);
-    let paths = find_arb_paths_v2(pools.into_iter().cloned().collect(), WETH_ADDRESS);
-    for path in paths {
-        let amount_out = path.simulate(amount_in).expect("Simulation failed");
-        let pct_gain =  (amount_out - amount_in) * U256::from(10000) / amount_in;
-        // let (amount_out_surplus, overflow) = amount_out.overflowing_sub(U256::from(amount_in));
-        // let pct_gain = if overflow {
-        //     U256::ZERO
-        // } else {
-        //     amount_out_surplus * U256::from(10000) / U256::from(amount_in)
-        // };
-        println!("----Arb Path---");
-        println!("Path: {:#?}", path);
-        println!("Amount in: {}", amount_in);
-        println!("Simulated amount out: {}", amount_out);
-        println!("Percentage gain: {}%", pct_gain);
-        println!("\n\n");
-    }
     Ok(())
 }
