@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::{Ok, Result};
+use anyhow::Result;
 use itertools::Itertools;
 use url::Url;
-use amms::amms::{amm::AMM, path::find_arb_paths_v2, uniswap_v2::UniswapV2Pool};
+use amms::amms::{amm::AMM, factory::Factory, path::find_arb_paths_v2, uniswap_v2::UniswapV2Pool};
 use log::{info};
 use rust::{constants::{
     Env, MIN_WETH_THRESHOLD, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WEI, WETH_ADDRESS, WETH_AMOUNT_IN, WHITELIST_TOKENS
@@ -54,7 +54,7 @@ async fn main() -> Result<()> {
 
     let provider = Arc::new(ProviderBuilder::new().connect_client(client));
 
-    let factories = vec![
+    let factories: Vec<Factory> = vec![
         // UniswapV2
         UniswapV2Factory::new(
             UNISWAP_V2_FACTORY_ADDRESS,
@@ -72,28 +72,36 @@ async fn main() -> Result<()> {
 
     let filters: Vec<PoolFilter> = vec![
         //PoolWhitelistFilter::new(vec![address!("88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640")]).into(),
-        TokenWhitelistFilter::new(WHITELIST_TOKENS.to_vec()).into(),
-        //ValueFilter::new(UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WETH_ADDRESS, U256::from(MIN_WETH_THRESHOLD), provider.clone()).into(),
+        //TokenWhitelistFilter::new(WHITELIST_TOKENS.to_vec()).into(),
+        ValueFilter::new(UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WETH_ADDRESS, U256::from(MIN_WETH_THRESHOLD), provider.clone()).into(),
     ];
 
-    let _state_space_manager = sync!(factories, filters, provider);
+    //let _state_space_manager = sync!(factories, filters, provider);
+
+    let _state_space_manager = StateSpaceBuilder::new(provider.clone())
+        .from_cache("src/uniswap-pools.json".to_string())
+        //.with_output_file("src/uniswap-pools.json".to_string())
+        //.with_factories(factories)
+        //.with_filters(filters)
+        .sync()
+        .await?;
 
     
     println!("Latest block: {:?}", _state_space_manager.latest_block.load(std::sync::atomic::Ordering::Relaxed));
-    let state = _state_space_manager.state.read().await;
+    //let state = _state_space_manager.state.read().await;
     //println!("Full State: {:#?}", &*state);
     // or if you only want the map:
     //println!("State Map Length: {}", state.state.keys().len());
     //println!("State Map: {:#?}", state.state);
-    let pools: Vec<&UniswapV2Pool> = state.state.values()
-    .filter_map(|amm| match amm {
-        AMM::UniswapV2Pool(pool) => Some(pool),
-        _ => None,
-    })
-    .collect();
-    for p1 in pools.clone() {
-        println!("{:#?}\n\n", p1);
-    }
+    // let pools: Vec<&UniswapV2Pool> = state.state.values()
+    // .filter_map(|amm| match amm {
+    //     AMM::UniswapV2Pool(pool) => Some(pool),
+    //     _ => None,
+    // })
+    // .collect();
+    // for p1 in pools.clone() {
+    //     println!("{:#?}\n\n", p1);
+    // }
     // let amount_in = U256::from(WETH_AMOUNT_IN);
     // let paths = find_arb_paths_v2(pools.into_iter().cloned().collect(), WETH_ADDRESS);
     // for path in paths {

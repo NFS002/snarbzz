@@ -60,4 +60,4 @@ name = "benchmarks"
 harness = false
 
 [patch.crates-io]
-amms = { path = "/Users/noahfs/skylines/amms-r2" }
+amms = { path = "/Users/noahfs/dev/amms-rs" }
