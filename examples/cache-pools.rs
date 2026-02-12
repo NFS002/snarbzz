@@ -79,10 +79,10 @@ async fn main() -> Result<()> {
     //let _state_space_manager = sync!(factories, filters, provider);
 
     let _state_space_manager = StateSpaceBuilder::new(provider.clone())
-        .from_cache("data/uniswapv2-pools.json".to_string())
-        //.with_output_file("src/uniswap-pools.json".to_string())
-        //.with_factories(factories)
-        //.with_filters(filters)
+        //.from_cache("src/uniswap-pools.json".to_string())
+        .with_factories(factories)
+        .with_filters(filters)
+        .to_cache("data/uniswapv2-pools.json".to_string())
         .sync()
         .await?;
 

@@ -17,3 +17,4 @@ Cargo.lock
 
 # Data
 src/uniswap-pools.json
+data
