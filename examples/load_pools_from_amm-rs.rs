@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{fs::File, io::Write, sync::Arc};
 
 use anyhow::Result;
+use futures::StreamExt;
 use itertools::Itertools;
 use url::Url;
 use amms::amms::{amm::AMM, factory::Factory, path::find_arb_paths_v2, uniswap_v2::UniswapV2Pool};
@@ -11,7 +12,7 @@ use rust::{constants::{
 
 use alloy::{
     primitives::{Address, I256, U256, address},
-    providers::ProviderBuilder,
+    providers::{ProviderBuilder, WsConnect},
     rpc::client::ClientBuilder,
 transports::layers::{RetryBackoffLayer, ThrottleLayer},
 };
@@ -43,16 +44,24 @@ async fn main() -> Result<()> {
     // let factory_blocks = vec![10794229u64];
 
     let rpc_https_url = Url::parse(env.https_url.as_str())?;
+    let wss_url = Url::parse(env.wss_url.as_str())?;
 
     //let uniswapv2_factory_address = address!("5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
     
 
-     let client = ClientBuilder::default()
+     let http_client = ClientBuilder::default()
         .layer(ThrottleLayer::new(100))
         .layer(RetryBackoffLayer::new(5, 200, 330))
         .http(rpc_https_url);
+    
+    let ws_client = ClientBuilder::default()
+    .layer(ThrottleLayer::new(100))
+    .pubsub(WsConnect::new(wss_url))
+    .await?;
 
-    let provider = Arc::new(ProviderBuilder::new().connect_client(client));
+
+    let http_provider = Arc::new(ProviderBuilder::new().connect_client(http_client));
+    let wss_provider = Arc::new(ProviderBuilder::new().connect_client(ws_client));
 
     let factories: Vec<Factory> = vec![
         // UniswapV2
@@ -73,21 +82,47 @@ async fn main() -> Result<()> {
     let filters: Vec<PoolFilter> = vec![
         //PoolWhitelistFilter::new(vec![address!("88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640")]).into(),
         //TokenWhitelistFilter::new(WHITELIST_TOKENS.to_vec()).into(),
-        ValueFilter::new(UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WETH_ADDRESS, U256::from(MIN_WETH_THRESHOLD), provider.clone()).into(),
+        ValueFilter::new(UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WETH_ADDRESS, U256::from(MIN_WETH_THRESHOLD), http_provider.clone()).into(),
     ];
 
     //let _state_space_manager = sync!(factories, filters, provider);
 
-    let _state_space_manager = StateSpaceBuilder::new(provider.clone())
+    let _state_space_manager = Arc::new(StateSpaceBuilder::new(http_provider.clone())
         .from_cache("data/uniswapv2-pools.json".to_string())
         //.with_output_file("src/uniswap-pools.json".to_string())
         //.with_factories(factories)
         //.with_filters(filters)
+        .with_pubsub_provider(wss_provider)
         .sync()
-        .await?;
+        .await?);
+
+    let spreads_file = std::fs::File::options()
+        .append(true)
+        .create(true)
+        .open("data/swaps.log")?;
 
     
     println!("Latest block: {:?}", _state_space_manager.latest_block.load(std::sync::atomic::Ordering::Relaxed));
+    let mut stream = _state_space_manager.subscribe()?;
+    while let Some(updated_amms) = stream.next().await {
+        if let Ok(amms) = updated_amms {
+            println!("Updated AMMs: {:?}", amms);
+        }
+    }
+
+    /*
+    The subscribe method listens for new blocks and fetches
+    all logs matching any `sync_events()` specified by the AMM variants in the state space.
+    Under the hood, this method applies all state changes to any affected AMMs and returns a Vec of
+    addresses, indicating which AMMs have been updated.
+    */
+    // let mut stream = state_space_manager.subscribe().await?.take(5);
+    // while let Some(updated_amms) = stream.next().await {
+    //     if let Ok(amms) = updated_amms {
+    //         println!("Updated AMMs: {:?}", amms);
+    //     }
+    // }
+
     //let state = _state_space_manager.state.read().await;
     //println!("Full State: {:#?}", &*state);
     // or if you only want the map:
