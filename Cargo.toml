@@ -40,7 +40,7 @@ indicatif = "0.17.5"
 duners = "0.0.3"
 amms = "0.7.4"
 # alloy
-alloy = { version = "1.5.0", features = [
+alloy = { version = "1.0.25", features = [
   "contract",
   "network",
   "rpc",
