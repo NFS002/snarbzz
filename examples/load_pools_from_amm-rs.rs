@@ -63,15 +63,15 @@ async fn main() -> Result<()> {
     let http_provider = Arc::new(ProviderBuilder::new().connect_client(http_client));
     let wss_provider = Arc::new(ProviderBuilder::new().connect_client(ws_client));
 
-    // let factories: Vec<Factory> = vec![
-    //     // UniswapV2
-    //     UniswapV2Factory::new(UNISWAP_V2_FACTORY_ADDRESS, 300, 10000835).into(), // UniswapV3
-    //                                                                              // UniswapV3Factory::new(
-    //                                                                              //     UNISWAP_V3_FACTORY_ADDRESS,
-    //                                                                              //     12369621,
-    //                                                                              // )
-    //                                                                              // .into(),
-    // ];
+    let factories: Vec<Factory> = vec![
+        // UniswapV2
+        UniswapV2Factory::new(UNISWAP_V2_FACTORY_ADDRESS, 300, 10000835).into(), // UniswapV3
+                                                                                 // UniswapV3Factory::new(
+                                                                                 //     UNISWAP_V3_FACTORY_ADDRESS,
+                                                                                 //     12369621,
+                                                                                 // )
+                                                                                 // .into(),
+    ];
 
     // let filters: Vec<PoolFilter> = vec![
     //     //PoolWhitelistFilter::new(vec![address!("88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640")]).into(),
@@ -113,7 +113,9 @@ async fn main() -> Result<()> {
     let mut stream = _state_space_manager.subscribe()?;
     while let Some(result) = stream.next().await {
         if let Ok(next_block) = result {
-            println!("Next Block: {:?}", next_block);
+            println!("Next Block: {:?}", next_block.hash);
+        } else {
+            println!("An error occured: {}", result.err().unwrap())
         }
     }
 
