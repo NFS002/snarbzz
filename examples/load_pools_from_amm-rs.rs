@@ -112,8 +112,8 @@ async fn main() -> Result<()> {
     */
     let mut stream = _state_space_manager.subscribe()?;
     while let Some(result) = stream.next().await {
-        if let Ok(next_block) = result {
-            println!("Next Block: {:?}", next_block.hash);
+        if let Ok(_next_block) = result {
+            // Pass
         } else {
             println!("An error occured: {}", result.err().unwrap())
         }
