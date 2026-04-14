@@ -90,10 +90,10 @@ async fn main() -> Result<()> {
 
     let _state_space_manager = Arc::new(
         StateSpaceBuilder::new(http_provider.clone())
-            .from_cache("data/uniswapv2-pools.json".to_string())
-            //.with_output_file("src/uniswap-pools.json".to_string())
+            .from_cache("data/uniswap-pools.json".to_string())
             //.with_factories(factories)
             //.with_filters(filters)
+            //.to_cache("data/uniswap-pools.json".to_string())
             .with_pubsub_provider(wss_provider)
             .sync()
             .await?,
@@ -112,10 +112,9 @@ async fn main() -> Result<()> {
     */
     let mut stream = _state_space_manager.subscribe()?;
     while let Some(result) = stream.next().await {
-        if let Ok(_next_block) = result {
+        if let Err(err) = result {
             // Pass
-        } else {
-            println!("An error occured: {}", result.err().unwrap())
+            println!("Error: {:#?}", err)
         }
     }
 
