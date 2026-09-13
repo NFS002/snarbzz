@@ -7,8 +7,8 @@ use itertools::Itertools;
 use log::{error, info};
 use rust::{
     constants::{
-        Env, MIN_WETH_THRESHOLD, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WEI,
-        WETH_ADDRESS, WETH_AMOUNT_IN, WHITELIST_TOKENS,
+        Env, MIN_WETH_THRESHOLD, TEST_POOLS, UNISWAP_V2_FACTORY_ADDRESS,
+        UNISWAP_V3_FACTORY_ADDRESS, WEI, WETH_ADDRESS, WETH_AMOUNT_IN, WHITELIST_TOKENS,
     },
     math::{format_percent_bp, percentage_change_bp},
 };
@@ -63,38 +63,23 @@ async fn main() -> Result<()> {
     let http_provider = Arc::new(ProviderBuilder::new().connect_client(http_client));
     let wss_provider = Arc::new(ProviderBuilder::new().connect_client(ws_client));
 
-    // let factories: Vec<Factory> = vec![
-    //     // UniswapV2
-    //     UniswapV2Factory::new(UNISWAP_V2_FACTORY_ADDRESS, 300, 10000835).into(), // UniswapV3
-    //                                                                              // UniswapV3Factory::new(
-    //                                                                              //     UNISWAP_V3_FACTORY_ADDRESS,
-    //                                                                              //     12369621,
-    //                                                                              // )
-    //                                                                              // .into(),
-    // ];
+    let factories: Vec<Factory> = vec![
+        UniswapV2Factory::new(UNISWAP_V2_FACTORY_ADDRESS, 300, 10000835).into(),
+        // UniswapV3Factory::new(UNISWAP_V3_FACTORY_ADDRESS, 12369621)
+    ];
 
-    // let filters: Vec<PoolFilter> = vec![
-    //     //PoolWhitelistFilter::new(vec![address!("88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640")]).into(),
-    //     //TokenWhitelistFilter::new(WHITELIST_TOKENS.to_vec()).into(),
-    //     ValueFilter::new(
-    //         UNISWAP_V2_FACTORY_ADDRESS,
-    //         UNISWAP_V3_FACTORY_ADDRESS,
-    //         WETH_ADDRESS,
-    //         U256::from(MIN_WETH_THRESHOLD),
-    //         http_provider.clone(),
-    //     )
-    //     .into(),
-    // ];
+    let filters: Vec<PoolFilter> = vec![PoolWhitelistFilter::new(TEST_POOLS.to_vec()).into()];
 
     //let _state_space_manager = sync!(factories, filters, provider);
 
     let _state_space_manager = Arc::new(
         StateSpaceBuilder::new(http_provider.clone())
-            .from_cache("data/uniswap-pools.json".to_string())
-            //.with_factories(factories)
-            //.with_filters(filters)
-            //.to_cache("data/uniswap-pools.json".to_string())
+            //.from_cache("data/uniswap-pools-ltd.json".to_string())
+            //.with_amms(amms)
+            .with_factories(factories)
             .with_pubsub_provider(wss_provider)
+            .with_filters(filters)
+            .to_cache(Option::None)
             .sync()
             .await?,
     );

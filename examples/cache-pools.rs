@@ -84,7 +84,7 @@ async fn main() -> Result<()> {
         //.from_cache("src/uniswap-pools.json".to_string())
         .with_factories(factories)
         .with_filters(filters)
-        .to_cache("data/uniswapv2-pools.json".to_string())
+        .to_cache(Option::None)
         .sync()
         .await?;
 

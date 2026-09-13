@@ -4,7 +4,10 @@ use ethers::{
     prelude::Lazy,
     types::{Address, H160, U256, U64},
 };
-use std::{ops::{Add, Mul}, str::FromStr};
+use std::{
+    ops::{Add, Mul},
+    str::FromStr,
+};
 
 pub const UNISWAP_V2_FACTORY_ADDRESS: HexAddress =
     address!("5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
@@ -18,10 +21,22 @@ pub const WBTC_ADDRESS: HexAddress = address!("2260FAC5E5542a773Aa44fBCfeDf7C193
 pub const MIN_WETH_THRESHOLD: u128 = 10u128.pow(19); // 10 WETH (18 decimals)
 pub const WETH_AMOUNT_IN: u128 = 5_800_000_000_000_000;
 
-
 pub static WEI: Lazy<U256> = Lazy::new(|| U256::from(10).pow(U256::from(18)));
 pub static GWEI: Lazy<U256> = Lazy::new(|| U256::from(10).pow(U256::from(9)));
 pub static DUNE_QUERY_ID: u32 = 6572025;
+
+pub const TEST_POOLS: [HexAddress; 10] = [
+    address!("0xA43fe16908251ee70EF74718545e4FE6C5cCEc9f"), // PEPE/ETH
+    address!("0x52c77b0CB827aFbAD022E6d6CAF2C44452eDbc39"), // SPX/ETH
+    address!("0x76A411f14A704099Ba476CE8dFFC288a53295218"), // ASTEROID/ETH
+    address!("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc"), // ETH/USDC
+    address!("0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852"), // ETH/USDT
+    address!("0x0d4a11d5EEaaC28EC3F61d100daF4d40471f1852"), // NPC/ETH
+    address!("0xC555D55279023E732CcD32D812114cAF5838fD46"), // Neiro/ETH
+    address!("0x2621CC0B3F3c079c1Db0E80794AA24976F0b9e3c"), // SKY/USDS
+    address!("0x9C4Fe5FFD9A9fC5678cFBd93Aa2D4FD684b67C4C"), // PAXG/ETH 
+    address!("0xc2eaB7d33d3cB97692eCB231A5D0e4A649Cb539d") // Mog/ETH
+];
 
 pub static ZERO_ADDRESS: Lazy<Address> =
     Lazy::new(|| Address::from_str("0x0000000000000000000000000000000000000000").unwrap());
@@ -67,15 +82,13 @@ impl Env {
     }
 }
 
-
 pub const WHITELIST_TOKENS: [HexAddress; 5] = [
     WETH_ADDRESS,
     USDT_ADDRESS,
     USDC_ADDRESS,
     DAI_ADDRESS,
-    WBTC_ADDRESS
+    WBTC_ADDRESS,
 ];
-
 
 pub fn get_blacklist_tokens() -> Vec<H160> {
     vec!["0x9469603F3Efbcf17e4A5868d81C701BDbD222555"]
