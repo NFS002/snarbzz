@@ -98,7 +98,6 @@ async fn main() -> Result<()> {
     let mut stream = _state_space_manager.subscribe()?;
     while let Some(result) = stream.next().await {
         if let Err(err) = result {
-            // Pass
             error!("Error: {:#?}", err)
         }
     }
