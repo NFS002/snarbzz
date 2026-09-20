@@ -70,6 +70,19 @@ async fn main() -> Result<()> {
 
     let filters: Vec<PoolFilter> = vec![PoolWhitelistFilter::new(TEST_POOLS.to_vec()).into()];
 
+    let value_filters: Vec<PoolFilter> = vec![
+        //PoolWhitelistFilter::new(vec![address!("88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640")]).into(),
+        //TokenWhitelistFilter::new(WHITELIST_TOKENS.to_vec()).into(),
+        ValueFilter::new(
+            UNISWAP_V2_FACTORY_ADDRESS,
+            UNISWAP_V3_FACTORY_ADDRESS,
+            WETH_ADDRESS,
+            U256::from(MIN_WETH_THRESHOLD),
+            http_provider.clone(),
+        )
+        .into(),
+    ];
+
     //let _state_space_manager = sync!(factories, filters, provider);
 
     let _state_space_manager = Arc::new(
@@ -78,7 +91,7 @@ async fn main() -> Result<()> {
             //.with_amms(amms)
             .with_factories(factories)
             .with_pubsub_provider(wss_provider)
-            .with_filters(filters)
+            .with_filters(value_filters)
             .to_cache(Option::None)
             .sync()
             .await?,
@@ -95,10 +108,19 @@ async fn main() -> Result<()> {
     Under the hood, this method applies all state changes to any affected AMMs and returns a Vec of
     addresses, indicating which AMMs have been updated.
     */
-    let mut stream = _state_space_manager.subscribe()?;
+    let mut stream = _state_space_manager.clone().subscribe()?;
     while let Some(result) = stream.next().await {
-        if let Err(err) = result {
-            error!("Error: {:#?}", err)
+        match result {
+            Ok(head) => {
+                // let state = _state_space_manager.state.read().await;
+
+                // Simulate candidate trades using the updated pools.
+                // Associate results with head.hash.
+            }
+            Err(err) => {
+                error!("Indexer failed: {err:#?}");
+                break;
+            }
         }
     }
 
@@ -117,7 +139,7 @@ async fn main() -> Result<()> {
     //     println!("{:#?}\n\n", p1);
     // }
     // let amount_in = U256::from(WETH_AMOUNT_IN);
-    // let paths = find_arb_paths_v2(pools.into_iter().cloned().collect(), WETH_ADDRESS);
+    //let paths = find_arb_paths_v2(pools.into_iter().cloned().collect(), WETH_ADDRESS);
     // for path in paths {
     //     let amount_out = path.simulate(amount_in).expect("Simulation failed");
     //     let pct_gain_bp =  percentage_change_bp(amount_in, amount_out).unwrap_or(I256::ZERO);
