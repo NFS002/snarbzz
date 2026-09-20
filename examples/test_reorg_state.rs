@@ -97,6 +97,9 @@ async fn main() -> Result<()> {
             .await?,
     );
 
+    /* Run initial simulations */
+    _state_space_manager.simulate_all_paths();
+
     // let spreads_file = std::fs::File::options()
     //     .append(true)
     //     .create(true)
