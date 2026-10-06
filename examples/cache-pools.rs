@@ -9,7 +9,6 @@ use rust::{
         Env, MIN_WETH_THRESHOLD, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS, WEI,
         WETH_ADDRESS, WETH_AMOUNT_IN, WHITELIST_TOKENS,
     },
-    math::{format_percent_bp, percentage_change_bp},
 };
 use url::Url;
 

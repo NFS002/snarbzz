@@ -1,16 +1,15 @@
 use std::{fs::File, io::Write, sync::Arc};
 
-use amms::amms::{amm::AMM, factory::Factory, path::find_arb_paths_v2, uniswap_v2::UniswapV2Pool};
+use amms::amms::{
+    amm::AMM, factory::Factory, path::{UniswapArbPathEntry, UniswapV2SimulationResult, find_arb_paths_v2}, uniswap_v2::UniswapV2Pool,
+};
 use anyhow::Result;
 use futures::StreamExt;
 use itertools::Itertools;
 use log::{error, info};
-use rust::{
-    constants::{
-        Env, MIN_WETH_THRESHOLD, TEST_POOLS, UNISWAP_V2_FACTORY_ADDRESS,
-        UNISWAP_V3_FACTORY_ADDRESS, WEI, WETH_ADDRESS, WETH_AMOUNT_IN, WHITELIST_TOKENS,
-    },
-    math::{format_percent_bp, percentage_change_bp},
+use rust::constants::{
+    Env, MIN_WETH_THRESHOLD, TEST_POOLS, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS,
+    WEI, WETH_ADDRESS, WETH_AMOUNT_IN, WHITELIST_TOKENS,
 };
 use url::Url;
 
@@ -22,7 +21,7 @@ use alloy::{
 };
 
 use amms::{
-    amms::{uniswap_v2::UniswapV2Factory, uniswap_v3::UniswapV3Factory},
+    amms::{math::format_percent_bp, uniswap_v2::UniswapV2Factory, uniswap_v3::UniswapV3Factory},
     state_space::{
         filters::{
             value::ValueFilter,
@@ -31,7 +30,6 @@ use amms::{
         },
         StateSpaceBuilder,
     },
-    sync,
 };
 
 #[tokio::main]
@@ -85,21 +83,53 @@ async fn main() -> Result<()> {
 
     //let _state_space_manager = sync!(factories, filters, provider);
 
-    let _state_space_manager = Arc::new(
-        StateSpaceBuilder::new(http_provider.clone())
-            //.from_cache("data/uniswap-pools-ltd.json".to_string())
-            //.with_amms(amms)
-            .with_factories(factories)
-            .with_pubsub_provider(wss_provider)
-            .with_filters(value_filters)
-            .to_cache(Option::None)
-            .sync()
-            .await?,
-    );
+    let mut _state_space_manager = Arc::new(StateSpaceBuilder::new(http_provider.clone())
+        //.from_cache("data/uniswap-pools-ltd.json".to_string())
+        //.with_amms(amms)
+        .with_factories(factories)
+        .with_pubsub_provider(wss_provider)
+        .with_filters(value_filters)
+        .to_cache(Option::None)
+        .sync()
+        .await?);
 
     /* Run initial simulations */
-    _state_space_manager.simulate_all_paths();
+    _state_space_manager.simulate_all_paths().await?;
 
+    //let _state_space_manager = Arc::new(_state_space_manager);
+    let arb_paths = _state_space_manager.arb_paths.read().await;
+    //let entries = &arb_paths.paths;
+    for entry in arb_paths.paths.iter() {
+        let UniswapArbPathEntry { last_simulation: sim, path } = entry;
+        let UniswapV2SimulationResult { amount_in, amount_out, path_id, pct_gain_bp, .. } = sim.as_ref().expect("Expected simulation result");
+        println!("----Arb Path---");
+        println!("Path: {:#?}", path);
+        println!("Amount in: {}", amount_in);
+        println!("Simulated amount out: {}", amount_out);
+        println!("Percentage gain: {}%", format_percent_bp(pct_gain_bp));
+        println!("\n\n");
+    }
+    // for last_simulation in initial_simulations {
+    //     let UniswapV2SimulationResult {
+    //         amount_in,
+    //         amount_out,
+    //         path_id,
+    //         pct_gain_bp,
+    //         ..
+    //     } = last_simulation
+    //     else {
+    //         continue;
+    //     };
+    //     let path = &path_entry.path;
+    //     println!("----Arb Path---");
+    //     println!("PathId: {:#?}", path_id);
+    //     println!("Path Hops: {:#?}", path);
+    //     println!("\t----Simulation---");
+    //     println!("Amount in: {}", amount_in);
+    //     println!("Simulated amount out: {}", amount_out);
+    //     println!("Percentage gain: {}%", format_percent_bp(pct_gain_bp));
+    //     println!("\n\n");
+    // }
     // let spreads_file = std::fs::File::options()
     //     .append(true)
     //     .create(true)
@@ -111,21 +141,22 @@ async fn main() -> Result<()> {
     Under the hood, this method applies all state changes to any affected AMMs and returns a Vec of
     addresses, indicating which AMMs have been updated.
     */
-    let mut stream = _state_space_manager.clone().subscribe()?;
-    while let Some(result) = stream.next().await {
-        match result {
-            Ok(head) => {
-                // let state = _state_space_manager.state.read().await;
 
-                // Simulate candidate trades using the updated pools.
-                // Associate results with head.hash.
-            }
-            Err(err) => {
-                error!("Indexer failed: {err:#?}");
-                break;
-            }
-        }
-    }
+    // let mut stream = _state_space_manager.clone().subscribe()?;
+    // while let Some(result) = stream.next().await {
+    //     match result {
+    //         Ok(head) => {
+    //             // let state = _state_space_manager.state.read().await;
+
+    //             // Simulate candidate trades using the updated pools.
+    //             // Associate results with head.hash.
+    //         }
+    //         Err(err) => {
+    //             error!("Indexer failed: {err:#?}");
+    //             break;
+    //         }
+    //     }
+    // }
 
     //let state = _state_space_manager.state.read().await;
     //println!("Full State: {:#?}", &*state);
