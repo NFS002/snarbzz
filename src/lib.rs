@@ -8,3 +8,5 @@ pub mod simulator;
 pub mod strategy;
 pub mod streams;
 pub mod utils;
+
+pub mod execution_engine;

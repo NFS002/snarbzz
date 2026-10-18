@@ -90,9 +90,9 @@ async fn main() -> Result<()> {
     //let state = _state_space_manager.state.read().await;
     //println!("Full State: {:#?}", &*state);
     // or if you only want the map:
-    //println!("State Map Length: {}", state.state.keys().len());
-    //println!("State Map: {:#?}", state.state);
-    // let pools: Vec<&UniswapV2Pool> = state.state.values()
+    //println!("State Map Length: {}", state.pools.keys().len());
+    //println!("State Map: {:#?}", state.pools);
+    // let pools: Vec<&UniswapV2Pool> = state.pools.values()
     // .filter_map(|amm| match amm {
     //     AMM::UniswapV2Pool(pool) => Some(pool),
     //     _ => None,
@@ -103,8 +103,9 @@ async fn main() -> Result<()> {
     // }
     // let amount_in = U256::from(WETH_AMOUNT_IN);
     // let paths = find_arb_paths_v2(pools.into_iter().cloned().collect(), WETH_ADDRESS);
-    // for path in paths {
-    //     let amount_out = path.simulate(amount_in).expect("Simulation failed");
+    // for entry in &paths.paths {
+    //     let view = entry.path.resolve(&state)?;
+    //     let amount_out = view.simulate(amount_in).expect("Simulation failed");
     //     let pct_gain_bp =  percentage_change_bp(amount_in, amount_out).unwrap_or(I256::ZERO);
     //     // let (amount_out_surplus, overflow) = amount_out.overflowing_sub(U256::from(amount_in));
     //     // let pct_gain = if overflow {
@@ -113,7 +114,7 @@ async fn main() -> Result<()> {
     //     //     amount_out_surplus * U256::from(10000) / U256::from(amount_in)
     //     // };
     //     println!("----Arb Path---");
-    //     println!("Path: {:#?}", path);
+    //     println!("Path: {}", view);
     //     println!("Amount in: {}", amount_in);
     //     println!("Simulated amount out: {}", amount_out);
     //     println!("Percentage gain: {}%", format_percent_bp(pct_gain_bp));

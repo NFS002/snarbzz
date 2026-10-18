@@ -13,3 +13,5 @@ You can also checkout the speed performance of this system by running the benchm
 ```bash
 cargo bench
 ```
+See [Execution engine](docs/execution-engine.md) for batch handling, default trade limits,
+dry-run evaluation, and the deployment placeholders for live submission.

@@ -1,33 +1,26 @@
-use std::{fs::File, io::Write, sync::Arc};
+use std::sync::Arc;
 
-use amms::amms::{
-    amm::AMM, factory::Factory, path::{UniswapArbPathEntry, UniswapV2SimulationResult, find_arb_paths_v2}, uniswap_v2::UniswapV2Pool,
-};
+use amms::amms::{amm::AMM, factory::Factory, uniswap_v2::UniswapV2Pool};
 use anyhow::Result;
 use futures::StreamExt;
-use itertools::Itertools;
-use log::{error, info};
+use log::{debug, info};
 use rust::constants::{
     Env, MIN_WETH_THRESHOLD, TEST_POOLS, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS,
-    WEI, WETH_ADDRESS, WETH_AMOUNT_IN, WHITELIST_TOKENS,
+    WETH_ADDRESS,
 };
 use url::Url;
 
 use alloy::{
-    primitives::{address, Address, I256, U256},
+    primitives::U256,
     providers::{ProviderBuilder, WsConnect},
     rpc::client::ClientBuilder,
     transports::layers::{RetryBackoffLayer, ThrottleLayer},
 };
 
 use amms::{
-    amms::{math::format_percent_bp, uniswap_v2::UniswapV2Factory, uniswap_v3::UniswapV3Factory},
+    amms::uniswap_v2::UniswapV2Factory,
     state_space::{
-        filters::{
-            value::ValueFilter,
-            whitelist::{PoolWhitelistFilter, TokenWhitelistFilter},
-            PoolFilter,
-        },
+        filters::{value::ValueFilter, whitelist::PoolWhitelistFilter, PoolFilter},
         StateSpaceBuilder,
     },
 };
@@ -66,7 +59,7 @@ async fn main() -> Result<()> {
         // UniswapV3Factory::new(UNISWAP_V3_FACTORY_ADDRESS, 12369621)
     ];
 
-    let filters: Vec<PoolFilter> = vec![PoolWhitelistFilter::new(TEST_POOLS.to_vec()).into()];
+    let pool_filter: Vec<PoolFilter> = vec![PoolWhitelistFilter::new(TEST_POOLS.to_vec()).into()];
 
     let value_filters: Vec<PoolFilter> = vec![
         //PoolWhitelistFilter::new(vec![address!("88e6A0c2dDD26FEEb64F039a2c41296FcB3f5640")]).into(),
@@ -83,112 +76,88 @@ async fn main() -> Result<()> {
 
     //let _state_space_manager = sync!(factories, filters, provider);
 
-    let mut _state_space_manager = Arc::new(StateSpaceBuilder::new(http_provider.clone())
-        //.from_cache("data/uniswap-pools-ltd.json".to_string())
-        //.with_amms(amms)
-        .with_factories(factories)
-        .with_pubsub_provider(wss_provider)
-        .with_filters(value_filters)
-        .to_cache(Option::None)
-        .sync()
-        .await?);
+    let test_amms: Vec<AMM> = TEST_POOLS
+        .into_iter()
+        .map(|address| UniswapV2Pool::new(address, 300).into())
+        .collect();
 
-    /* Run initial simulations */
-    _state_space_manager.simulate_all_paths().await?;
+    let _state_space_manager = Arc::new(
+        StateSpaceBuilder::new(http_provider.clone())
+            .from_cache("cache/pools/test-pools-v2.json".to_string())
+            //.with_amms(test_amms)
+            //.with_factories(factories)
+            .with_pubsub_provider(wss_provider)
+            //.with_filters(pool_filter)
+            // .to_cache(Some(
+            //     "cache/pools/test-pools-v2.json".to_string()
+            // ))
+            .sync()
+            .await?,
+    );
 
-    //let _state_space_manager = Arc::new(_state_space_manager);
-    let arb_paths = _state_space_manager.arb_paths.read().await;
-    //let entries = &arb_paths.paths;
-    for entry in arb_paths.paths.iter() {
-        let UniswapArbPathEntry { last_simulation: sim, path } = entry;
-        let UniswapV2SimulationResult { amount_in, amount_out, path_id, pct_gain_bp, .. } = sim.as_ref().expect("Expected simulation result");
-        println!("----Arb Path---");
-        println!("Path: {:#?}", path);
-        println!("Amount in: {}", amount_in);
-        println!("Simulated amount out: {}", amount_out);
-        println!("Percentage gain: {}%", format_percent_bp(pct_gain_bp));
-        println!("\n\n");
+    let (execution_tx, engine) =
+        rust::execution_engine::ExecutionEngine::channel(std::num::NonZeroUsize::new(8).unwrap());
+    // Defaults evaluate WETH cycles only. This example never signs or sends orders.
+    let execution_config = rust::execution_engine::policy::ExecutionConfig::default();
+    let mut engine_task = engine.spawn(move |batch| {
+        let config = execution_config.clone();
+        async move {
+            let block_hash = batch.context.block_hash;
+            for result in &batch.results {
+                debug!(
+                    "----Arb Path---\nPath: {:#?}\nAmount in: {}\nSimulated amount out: {}\nPercentage gain: {}%",
+                    result.path_snapshot,
+                    result.amount_in,
+                    result.amount_out,
+                    amms::amms::math::format_percent_bp(&result.pct_gain_bp),
+                );
+            }
+            let candidates = tokio::task::spawn_blocking(move || {
+                rust::execution_engine::policy::evaluate_batch(batch, &config)
+            })
+            .await??;
+            info!(
+                "Dry run: {} candidates for block {}",
+                candidates.len(),
+                block_hash
+            );
+            for candidate in candidates {
+                info!(
+                    "Candidate {}: input={}, output={}, estimated net profit={} (expected gas cost={}, maximum gas budget={})",
+                    candidate.path_snapshot.id(),
+                    candidate.amount_in,
+                    candidate.amount_out,
+                    candidate.net_profit,
+                    candidate.expected_gas_cost,
+                    candidate.max_gas_cost
+                );
+            }
+            Ok(())
+        }
+    });
+
+    // This future owns the sender, so finishing or dropping it closes the queue.
+    let forwarding = async move {
+        let mut stream = _state_space_manager.subscribe()?;
+        while let Some(batch) = stream.next().await {
+            let batch = batch.map_err(|err| {
+                log::error!("Indexer failed: {err:#?}");
+                err
+            })?;
+            execution_tx.send(batch).await?;
+        }
+        Ok::<(), anyhow::Error>(())
+    };
+
+    tokio::select! {
+        result = forwarding => {
+            // The sender is gone; let the engine drain its queue and finish.
+            engine_task.await??;
+            result
+        }
+        result = &mut engine_task => {
+            result??;
+            anyhow::bail!("Execution engine stopped while subscription was active")
+        }
     }
-    // for last_simulation in initial_simulations {
-    //     let UniswapV2SimulationResult {
-    //         amount_in,
-    //         amount_out,
-    //         path_id,
-    //         pct_gain_bp,
-    //         ..
-    //     } = last_simulation
-    //     else {
-    //         continue;
-    //     };
-    //     let path = &path_entry.path;
-    //     println!("----Arb Path---");
-    //     println!("PathId: {:#?}", path_id);
-    //     println!("Path Hops: {:#?}", path);
-    //     println!("\t----Simulation---");
-    //     println!("Amount in: {}", amount_in);
-    //     println!("Simulated amount out: {}", amount_out);
-    //     println!("Percentage gain: {}%", format_percent_bp(pct_gain_bp));
-    //     println!("\n\n");
-    // }
-    // let spreads_file = std::fs::File::options()
-    //     .append(true)
-    //     .create(true)
-    //     .open("data/swaps.log")?;
-
-    /*
-    The subscribe method listens for new blocks and fetches
-    all logs matching any `sync_events()` specified by the AMM variants in the state space.
-    Under the hood, this method applies all state changes to any affected AMMs and returns a Vec of
-    addresses, indicating which AMMs have been updated.
-    */
-
-    // let mut stream = _state_space_manager.clone().subscribe()?;
-    // while let Some(result) = stream.next().await {
-    //     match result {
-    //         Ok(head) => {
-    //             // let state = _state_space_manager.state.read().await;
-
-    //             // Simulate candidate trades using the updated pools.
-    //             // Associate results with head.hash.
-    //         }
-    //         Err(err) => {
-    //             error!("Indexer failed: {err:#?}");
-    //             break;
-    //         }
-    //     }
-    // }
-
-    //let state = _state_space_manager.state.read().await;
-    //println!("Full State: {:#?}", &*state);
-    // or if you only want the map:
-    //println!("State Map Length: {}", state.state.keys().len());
-    //println!("State Map: {:#?}", state.state);
-    // let pools: Vec<&UniswapV2Pool> = state.state.values()
-    // .filter_map(|amm| match amm {
-    //     AMM::UniswapV2Pool(pool) => Some(pool),
-    //     _ => None,
-    // })
-    // .collect();
-    // for p1 in pools.clone() {
-    //     println!("{:#?}\n\n", p1);
-    // }
-    // let amount_in = U256::from(WETH_AMOUNT_IN);
-    //let paths = find_arb_paths_v2(pools.into_iter().cloned().collect(), WETH_ADDRESS);
-    // for path in paths {
-    //     let amount_out = path.simulate(amount_in).expect("Simulation failed");
-    //     let pct_gain_bp =  percentage_change_bp(amount_in, amount_out).unwrap_or(I256::ZERO);
-    //     // let (amount_out_surplus, overflow) = amount_out.overflowing_sub(U256::from(amount_in));
-    //     // let pct_gain = if overflow {
-    //     //     U256::ZERO
-    //     // } else {
-    //     //     amount_out_surplus * U256::from(10000) / U256::from(amount_in)
-    //     // };
-    //     println!("----Arb Path---");
-    //     println!("Path: {:#?}", path);
-    //     println!("Amount in: {}", amount_in);
-    //     println!("Simulated amount out: {}", amount_out);
-    //     println!("Percentage gain: {}%", format_percent_bp(pct_gain_bp));
-    //     println!("\n\n");
-    // }
-    Ok(())
 }
