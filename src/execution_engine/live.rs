@@ -77,7 +77,7 @@ impl<M: Middleware + 'static> LiveSubmitter<M> {
     ) -> Result<Option<H256>> {
         ensure!(self.config.enabled, "Live submission is disabled");
         let candidates =
-            tokio::task::spawn_blocking(move || super::policy::evaluate_batch(batch, &config))
+            tokio::task::spawn_blocking(move || super::policy::evaluate_batch_and_map_err(batch, &config))
                 .await??;
         match candidates.into_iter().next() {
             Some(candidate) => self.submit(candidate).await,
@@ -221,12 +221,12 @@ impl<M: Middleware + 'static> LiveSubmitter<M> {
 
 #[cfg(test)]
 mod tests {
-    use super::super::policy::{evaluate_batch, tests::fixture, ExecutionConfig};
+    use super::super::policy::{evaluate_batch_and_map_err, tests::fixture, ExecutionConfig};
     use super::*;
     use ethers::providers::Provider;
 
     fn candidate() -> ExecutionCandidate {
-        evaluate_batch(fixture(), &ExecutionConfig::default())
+        evaluate_batch_and_map_err(fixture(), &ExecutionConfig::default())
             .unwrap()
             .remove(0)
     }
@@ -415,7 +415,7 @@ mod tests {
             slippage_bps: 9999,
             ..ExecutionConfig::default()
         };
-        let candidate = evaluate_batch(fixture(), &config).unwrap().remove(0);
+        let candidate = evaluate_batch_and_map_err(fixture(), &config).unwrap().remove(0);
         let (provider, mock) = Provider::mocked();
         let adapter = Arc::new(FloorAdapter(std::sync::Mutex::new(vec![])));
         let submitter = LiveSubmitter::new(

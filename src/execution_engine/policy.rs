@@ -1,11 +1,11 @@
 //! Snapshot evaluation. Amounts and profits use raw wrapped-native-token units.
 use std::{collections::HashSet, sync::Arc};
 
-use alloy::primitives::{Address, U256};
+use alloy::primitives::{Address, I256, U256};
 use amms::amms::path::{SimulationBatch, SimulationContext, UniswapArbPathSnapshot};
 use anyhow::{ensure, Result};
 use itertools::Itertools;
-use log::info;
+use log::{debug, info};
 
 #[derive(Debug, Clone)]
 pub struct ExecutionConfig {
@@ -79,6 +79,7 @@ pub struct ExecutionCandidate {
     pub gross_profit: U256,
     /// Snapshot profit minus expected gas cost, not the maximum spending budget.
     pub net_profit: U256,
+    pub pct_gain_bp: I256,
     pub predicted_base_fee_per_gas: u64,
     pub expected_fee_per_gas: u64,
     pub estimated_gas: u64,
@@ -145,26 +146,52 @@ impl ExecutionCandidate {
     }
 }
 
+/// Invalid batch data; the consumer may log this error and process the next batch.
+#[derive(Debug)]
+pub struct BatchEvaluationError(pub anyhow::Error);
+
+impl std::fmt::Display for BatchEvaluationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Batch evaluation failed: {:#}", self.0)
+    }
+}
+
+impl std::error::Error for BatchEvaluationError {}
+
 /// Bounded search over snapshots; this is an approximation, not a guaranteed optimum.
 /// Run on a blocking worker rather than occupying the subscription's async task.
-pub fn evaluate_batch(
+
+pub fn evaluate_batch_and_map_err(
     batch: SimulationBatch,
     config: &ExecutionConfig,
 ) -> Result<Vec<ExecutionCandidate>> {
+    // Configuration errors are fatal; only batch evaluation errors are recoverable.
     config.validate()?;
+    evaluate_batch(batch, config).map_err(|error| BatchEvaluationError(error).into())
+}
+
+fn evaluate_batch(
+    batch: SimulationBatch,
+    config: &ExecutionConfig,
+) -> Result<Vec<ExecutionCandidate>> {
     ensure!(
         batch.context.chain_id == config.chain_id,
         "batch chain does not match execution config"
     );
-    let Some(base_fee) = batch.context.base_fee_per_gas else {
-        return Ok(vec![]);
-    };
+    let base_fee = batch
+        .context
+        .base_fee_per_gas
+        .ok_or_else(|| anyhow::anyhow!("missing base_fee_per_gas"))?;
     let predicted_base_fee =
         predict_next_base_fee(base_fee, batch.context.gas_used, batch.context.gas_limit)?;
-    let Some(expected_fee) = predicted_base_fee.checked_add(config.priority_fee_per_gas) else {
-        return Ok(vec![]);
-    };
+    let expected_fee = predicted_base_fee
+        .checked_add(config.priority_fee_per_gas)
+        .ok_or_else(|| anyhow::anyhow!("expected gas fee overflow"))?;
     if expected_fee > config.max_fee_per_gas {
+        debug!(
+            "Rejecting batch {}: expected fee {} exceeds cap {}",
+            batch.context.block_hash, expected_fee, config.max_fee_per_gas
+        );
         return Ok(vec![]);
     }
     // Fee headroom is a spending limit, not the expected transaction price.
@@ -183,24 +210,36 @@ pub fn evaluate_batch(
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
     for result in batch.results {
+        let pct_gain_bp = result.pct_gain_bp;
         let path = result.path_snapshot;
-        if !valid_cycle(&path, config.wrapped_native_token) || !seen.insert(path.id()) {
+        let path_id = path.id();
+        let block_hash = batch.context.block_hash;
+        if !valid_cycle(&path, config.wrapped_native_token) {
+            debug!("Rejecting path {path_id} in block {block_hash}: invalid wrapped-native-token cycle");
+            continue;
+        }
+        if !seen.insert(path_id) {
+            debug!("Rejecting path {path_id} in block {block_hash}: duplicate path");
             continue;
         }
         let Some((amount_in, amount_out, gross_profit)) = optimise(&path, config, result.amount_in)
         else {
+            debug!("Rejecting path {path_id} in block {block_hash}: no valid non-loss-making simulation within input bounds");
             continue;
         };
         let Some(net_profit) = gross_profit.checked_sub(expected_gas_cost) else {
+            debug!("Rejecting path {path_id} in block {block_hash}: gross profit {gross_profit} below expected gas cost {expected_gas_cost}");
             continue;
         };
         if net_profit < config.min_net_profit {
+            debug!("Rejecting path {path_id} in block {block_hash}: net profit {net_profit} below minimum {}", config.min_net_profit);
             continue;
         }
         let Some(profit_floor) = amount_in
             .checked_add(expected_gas_cost)
             .and_then(|v| v.checked_add(config.min_net_profit))
         else {
+            debug!("Rejecting path {path_id} in block {block_hash}: profit floor overflow");
             continue;
         };
         // Divide first to avoid an intermediate multiplication overflowing U256.
@@ -214,6 +253,7 @@ pub fn evaluate_batch(
             min_amount_out,
             gross_profit,
             net_profit,
+            pct_gain_bp,
             predicted_base_fee_per_gas: predicted_base_fee,
             expected_fee_per_gas: expected_fee,
             estimated_gas: config.estimated_gas,
@@ -226,28 +266,36 @@ pub fn evaluate_batch(
             deadline,
         });
     }
+    // (!candidates.is_empty()).then(|| candidates.sort_by(|a, b| b.net_profit.cmp(&a.net_profit)));
     candidates.sort_by(|a, b| b.net_profit.cmp(&a.net_profit));
-    info!(
-        "Selecting first candidate: {}",
-        candidates.iter().map(|c| c.net_profit).join(",")
-    );
+    if candidates.len() >= 2 {
+        info!("Selecting first from {} candidates", candidates.len());
+    }
+    for candidate in candidates.iter().skip(1) {
+        debug!(
+            "Rejecting path {} in block {}: lower-ranked candidate (net profit {})",
+            candidate.path_snapshot.id(),
+            candidate.context.block_hash,
+            candidate.net_profit
+        );
+    }
     let top_candidate = candidates.into_iter().take(1).collect_vec();
     Ok(top_candidate)
 }
 
 fn valid_cycle(path: &UniswapArbPathSnapshot, token: Address) -> bool {
-    let (Some(first), Some(last)) = (path.hops.first(), path.hops.last()) else {
+    let (Some(first), Some(last)) = (path.hops().first(), path.hops().last()) else {
         return false;
     };
     let mut pools = HashSet::new();
     first.base == token
         && last.quote == token
         && path
-            .hops
+            .hops()
             .iter()
             .all(|hop| hop.base != hop.quote && pools.insert(hop.pool.address()))
         && path
-            .hops
+            .hops()
             .windows(2)
             .all(|hops| hops[0].quote == hops[1].base)
 }
@@ -322,20 +370,19 @@ pub(crate) mod tests {
             pool.reserve_1 = reserve_1 * 10u128.pow(18);
             UniswapPool::V2(pool)
         };
-        let path_snapshot = UniswapArbPathSnapshot {
-            hops: vec![
-                UniswapHopSnapshot {
-                    pool: make_pool(10, 2000),
-                    base: weth,
-                    quote: token,
-                },
-                UniswapHopSnapshot {
-                    pool: make_pool(11, 1000),
-                    base: token,
-                    quote: weth,
-                },
-            ],
-        };
+        let hops = vec![
+            UniswapHopSnapshot {
+                pool: make_pool(10, 2000),
+                base: weth,
+                quote: token,
+            },
+            UniswapHopSnapshot {
+                pool: make_pool(11, 1000),
+                base: token,
+                quote: weth,
+            },
+        ];
+        let path_snapshot = UniswapArbPathSnapshot::from_hops(hops);
         let amount_in = ExecutionConfig::default().min_amount_in;
         let amount_out = path_snapshot.simulate(amount_in).unwrap();
         SimulationBatch {
@@ -354,7 +401,7 @@ pub(crate) mod tests {
                 path_snapshot,
                 amount_in,
                 amount_out,
-                pct_gain_bp: amms::amms::math::percentage_change_bp(amount_in, amount_out),
+                pct_gain_bp: amms::amms::math::percentage_change_bp(amount_in, amount_out).unwrap(),
             }],
         }
     }
@@ -364,7 +411,7 @@ pub(crate) mod tests {
         let config = ExecutionConfig::default();
         let batch = fixture();
         let original = batch.results[0].amount_in;
-        let candidates = evaluate_batch(batch, &config).unwrap();
+        let candidates = evaluate_batch_and_map_err(batch, &config).unwrap();
         assert_eq!(candidates.len(), 1);
         let candidate = &candidates[0];
         assert!(candidate.amount_in > original);
@@ -386,45 +433,58 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn skips_missing_or_excessive_fees_and_unprofitable_candidates() {
+    fn rejects_missing_fees_and_skips_excessive_fees_and_unprofitable_candidates() {
         let config = ExecutionConfig::default();
         let mut batch = fixture();
         Arc::make_mut(&mut batch.context).base_fee_per_gas = None;
-        assert!(evaluate_batch(batch, &config).unwrap().is_empty());
+        assert!(evaluate_batch_and_map_err(batch, &config)
+            .unwrap_err()
+            .is::<BatchEvaluationError>());
         let mut batch = fixture();
         Arc::make_mut(&mut batch.context).base_fee_per_gas = Some(config.max_fee_per_gas);
-        assert!(evaluate_batch(batch, &config).unwrap().is_empty());
+        assert!(evaluate_batch_and_map_err(batch, &config)
+            .unwrap()
+            .is_empty());
         let config = ExecutionConfig {
             min_net_profit: U256::MAX,
             ..config
         };
-        assert!(evaluate_batch(fixture(), &config).unwrap().is_empty());
+        assert!(evaluate_batch_and_map_err(fixture(), &config)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
     fn rejects_non_native_cycles_and_reused_pools() {
         let config = ExecutionConfig::default();
         let mut batch = fixture();
-        batch.results[0].path_snapshot.hops[0].base = Address::ZERO;
-        assert!(evaluate_batch(batch, &config).unwrap().is_empty());
+        let mut hops = batch.results[0].path_snapshot.hops().to_vec();
+        hops[0].base = Address::ZERO;
+        batch.results[0].path_snapshot = UniswapArbPathSnapshot::from_hops(hops);
+        assert!(evaluate_batch_and_map_err(batch, &config)
+            .unwrap()
+            .is_empty());
         let mut batch = fixture();
-        let pool = batch.results[0].path_snapshot.hops[0].pool.clone();
-        batch.results[0].path_snapshot.hops[1].pool = pool;
-        assert!(evaluate_batch(batch, &config).unwrap().is_empty());
+        let mut hops = batch.results[0].path_snapshot.hops().to_vec();
+        hops[1].pool = hops[0].pool.clone();
+        batch.results[0].path_snapshot = UniswapArbPathSnapshot::from_hops(hops);
+        assert!(evaluate_batch_and_map_err(batch, &config)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
     fn validates_config_and_chain_and_deduplicates_routes() {
         let mut config = ExecutionConfig::default();
         config.min_amount_in = U256::ZERO;
-        assert!(evaluate_batch(fixture(), &config).is_err());
+        assert!(evaluate_batch_and_map_err(fixture(), &config).is_err());
         let config = ExecutionConfig::default();
         let mut batch = fixture();
         Arc::make_mut(&mut batch.context).chain_id = 2;
-        assert!(evaluate_batch(batch, &config).is_err());
+        assert!(evaluate_batch_and_map_err(batch, &config).is_err());
         let mut batch = fixture();
         batch.results.push(batch.results[0].clone());
-        assert_eq!(evaluate_batch(batch, &config).unwrap().len(), 1);
+        assert_eq!(evaluate_batch_and_map_err(batch, &config).unwrap().len(), 1);
     }
     #[test]
     fn next_base_fee_matches_eip1559_rounding_and_limits() {
@@ -453,7 +513,9 @@ pub(crate) mod tests {
             max_amount_in: ExecutionConfig::default().min_amount_in,
             ..ExecutionConfig::default()
         };
-        let mut candidate = evaluate_batch(fixture(), &config).unwrap().remove(0);
+        let mut candidate = evaluate_batch_and_map_err(fixture(), &config)
+            .unwrap()
+            .remove(0);
         assert_eq!(candidate.predicted_base_fee_per_gas, 1_000_000_000);
         assert_eq!(candidate.expected_fee_per_gas, 2_000_000_000);
         assert_eq!(candidate.max_fee_per_gas, 3_000_000_000);
@@ -479,7 +541,9 @@ pub(crate) mod tests {
             max_amount_in: ExecutionConfig::default().min_amount_in,
             ..ExecutionConfig::default()
         };
-        let mut candidate = evaluate_batch(fixture(), &config).unwrap().remove(0);
+        let mut candidate = evaluate_batch_and_map_err(fixture(), &config)
+            .unwrap()
+            .remove(0);
         assert!(!candidate.apply_gas_estimate(300_000, 360_000).unwrap());
         assert!(candidate.apply_gas_estimate(700_000, 800_000).is_err());
     }
@@ -488,7 +552,7 @@ pub(crate) mod tests {
     fn fee_headroom_is_capped_without_rejecting_an_affordable_prediction() {
         let mut batch = fixture();
         Arc::make_mut(&mut batch.context).base_fee_per_gas = Some(20_000_000_000);
-        let candidate = evaluate_batch(batch, &ExecutionConfig::default())
+        let candidate = evaluate_batch_and_map_err(batch, &ExecutionConfig::default())
             .unwrap()
             .remove(0);
         assert_eq!(candidate.expected_fee_per_gas, 21_000_000_000);

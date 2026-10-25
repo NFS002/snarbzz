@@ -1,0 +1,100 @@
+2026-10-25T19:17:09.055785Z  INFO amms::state_space: Syncing 26 UniswapV2 AMMs
+[00:00:00] ########################################      16/16      Generated 20 3-hop arbitrage paths in 0 seconds                                                                                                  2026-10-25T19:17:09.210356Z  INFO state_space::sync: State space sync complete elapsed_secs=0.41303667426109314 factories=0 filters=0 amms=26
+2026-10-25T19:17:13.727932Z  INFO amms::state_space: Processing next block target="state_space::subscribe" number=26271728 hash="0xd3b5dbf15516cddf8035c467b961c4cd361674879ba2c89351f24146bfd991fb"
+2026-10-25T19:17:13.978769Z  INFO amms::state_space: target="amms::state_space::StateSpace::simulate_all_paths" amount_in="5800000000000000"
+2026-10-25T19:17:13.979263Z  INFO amms::state_space: Finished simulating paths target="amms::state_space::StateSpace::simulate_path_indices" n_simulation_results=20
+2026-10-25T19:17:13.979289Z  INFO amms::state_space: BlockBuffer (2/64)
+	BlockRef (26271728): 0xf506447fd0d76422a4aed3bdad8b77db4af881000a484068773a5f717fc2b74f -> 0xd3b5dbf15516cddf8035c467b961c4cd361674879ba2c89351f24146bfd991fb
+	Pools affected: 0
+	
+	BlockRef (26271727): 0xa3fbb84deae50b4e4640188c601214794d03aaeb12df52d71a2a0b272a826605 -> 0xf506447fd0d76422a4aed3bdad8b77db4af881000a484068773a5f717fc2b74f
+	Pools affected: 0
+	
+ target="state_space::subscribe"
+2026-10-25T19:17:13.979341Z  INFO amms::state_space: StateSpace (10/26)
+uni2-GmTJCL:
+	0: token-Vf8ES5 -> 10050921379435262272893707 (18)
+	1: token-0PNZGx -> 89498253625 (6)
+uni2-MOfSRK:
+	0: token-8tf2HG -> 58212989632555313277244 (18)
+	1: token-XB0OKF -> 284148267163194041660 (18)
+uni2-vGYHi3:
+	0: token-tuoFdb -> 34196702946558763307 (18)
+	1: token-37XN4Q -> 15441974611678 (9)
+uni2-1PyJnZ:
+	0: token-Z9CJLX -> 1820154248334267254568247767680 (18)
+	1: token-Pxdmlz -> 26785687228 (6)
+uni2-iw5kFz:
+	0: token-AVbuy9 -> 1124233016573965274969 (18)
+	1: token-XB0OKF -> 41684639707553603427 (18)
+uni2-xNkgFo:
+	0: token-Z9CJLX -> 10032340980668074238755668135619 (18)
+	1: token-XB0OKF -> 62740338994978238543 (18)
+uni2-0OQ5aS:
+	0: token-3zK1Ut -> 3878587121650046072373254 (18)
+	1: token-XB0OKF -> 79629738897490003879 (18)
+uni2-yecLIb:
+	0: token-0PNZGx -> 9814348976289 (6)
+	1: token-XB0OKF -> 4168635911819925353413 (18)
+uni2-qg7a98:
+	0: token-XB0OKF -> 3005910415706535741052 (18)
+	1: token-Pxdmlz -> 7084790662544 (6)
+uni2-wurLd5:
+	0: token-XB0OKF -> 1938715723564467159344 (18)
+	1: token-37XN4Q -> 679288231504582 (9)
+ target="state_space::subscribe"
+2026-10-25T19:17:13.981993Z  INFO rust::execution_engine::policy: Selecting first from 2 candidates
+2026-10-25T19:17:13.982071Z  INFO test_reorg_state: Candidate 0xaa12d8568d585c6b413853903f239e52685ddb320d53ae3f257e8e335eba3ef9: block_hash=0xd3b5dbf15516cddf8035c467b961c4cd361674879ba2c89351f24146bfd991fb, input=100000000000000000, output=532013037667931794, estimated net profit=431596992710331794, pct_gain_bp=436.48% (expected gas cost=416044957600000, maximum gas budget=648062224800000)
+2026-10-25T19:17:25.508715Z  INFO amms::state_space: Processing next block target="state_space::subscribe" number=26271729 hash="0x11cbff754b096e74e4e6f4d6ac2a33936b594a292e7aae5dc2027537c47ad8f6"
+2026-10-25T19:17:25.557414Z  INFO amms::state_space: Synced AMM (staged) target="state_space::sync" amm=UniswapV2Pool { instance_id: 25, address_id: "LFyxJU", address: 0xd3d2e2692501a5c9ca623199d38826e513033a17, token_a: Token { address: 0x1f9840a85d5af5bf1d1762f925bdaddc4201f984, decimals: 18, instance_id: 14, address_id: "snsOgJ" }, token_b: Token { address: 0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2, decimals: 18, instance_id: 15, address_id: "XB0OKF" }, reserve_0: 264976535895673247224428, reserve_1: 783748097341980752061, fee: 300, count: Some(1) }
+2026-10-25T19:17:25.557475Z  INFO amms::state_space: target="amms::state_space::StateSpace::simulate_affected_paths" amount_in="5800000000000000"
+2026-10-25T19:17:25.557553Z  INFO amms::state_space: Finished simulating paths target="amms::state_space::StateSpace::simulate_path_indices" n_simulation_results=2
+2026-10-25T19:17:25.557560Z  INFO amms::state_space: BlockBuffer (3/64)
+	BlockRef (26271729): 0xd3b5dbf15516cddf8035c467b961c4cd361674879ba2c89351f24146bfd991fb -> 0x11cbff754b096e74e4e6f4d6ac2a33936b594a292e7aae5dc2027537c47ad8f6
+	Pools affected: 1
+		diff-LFyxJU:
+			"Sync(uint112,uint112)"
+			(264976225694562312302438, 783749012103941987597) -> (264976535895673247224428, 783748097341980752061)
+	
+	BlockRef (26271728): 0xf506447fd0d76422a4aed3bdad8b77db4af881000a484068773a5f717fc2b74f -> 0xd3b5dbf15516cddf8035c467b961c4cd361674879ba2c89351f24146bfd991fb
+	Pools affected: 0
+	
+	BlockRef (26271727): 0xa3fbb84deae50b4e4640188c601214794d03aaeb12df52d71a2a0b272a826605 -> 0xf506447fd0d76422a4aed3bdad8b77db4af881000a484068773a5f717fc2b74f
+	Pools affected: 0
+	
+ target="state_space::subscribe"
+2026-10-25T19:17:25.557594Z  INFO amms::state_space: StateSpace (10/26)
+uni2-GmTJCL:
+	0: token-Vf8ES5 -> 10050921379435262272893707 (18)
+	1: token-0PNZGx -> 89498253625 (6)
+uni2-MOfSRK:
+	0: token-8tf2HG -> 58212989632555313277244 (18)
+	1: token-XB0OKF -> 284148267163194041660 (18)
+uni2-vGYHi3:
+	0: token-tuoFdb -> 34196702946558763307 (18)
+	1: token-37XN4Q -> 15441974611678 (9)
+uni2-1PyJnZ:
+	0: token-Z9CJLX -> 1820154248334267254568247767680 (18)
+	1: token-Pxdmlz -> 26785687228 (6)
+uni2-iw5kFz:
+	0: token-AVbuy9 -> 1124233016573965274969 (18)
+	1: token-XB0OKF -> 41684639707553603427 (18)
+uni2-xNkgFo:
+	0: token-Z9CJLX -> 10032340980668074238755668135619 (18)
+	1: token-XB0OKF -> 62740338994978238543 (18)
+uni2-0OQ5aS:
+	0: token-3zK1Ut -> 3878587121650046072373254 (18)
+	1: token-XB0OKF -> 79629738897490003879 (18)
+uni2-yecLIb:
+	0: token-0PNZGx -> 9814348976289 (6)
+	1: token-XB0OKF -> 4168635911819925353413 (18)
+uni2-qg7a98:
+	0: token-XB0OKF -> 3005910415706535741052 (18)
+	1: token-Pxdmlz -> 7084790662544 (6)
+uni2-wurLd5:
+	0: token-XB0OKF -> 1938715723564467159344 (18)
+	1: token-37XN4Q -> 679288231504582 (9)
+ target="state_space::subscribe"
+
+
+ If you look at these sample logs, you will see that I am logging the first 10 pools of the state space after each block 

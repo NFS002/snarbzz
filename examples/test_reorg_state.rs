@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use amms::amms::{amm::AMM, factory::Factory, uniswap_v2::UniswapV2Pool};
+use amms::amms::{amm::AMM, factory::Factory, math::format_percent_bp, uniswap_v2::UniswapV2Pool};
 use anyhow::Result;
 use futures::StreamExt;
 use log::{debug, info};
-use rust::constants::{
+use rust::{constants::{
     Env, MIN_WETH_THRESHOLD, TEST_POOLS, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS,
     WETH_ADDRESS,
-};
+}, execution_engine::policy::{evaluate_batch_and_map_err}};
 use url::Url;
 
 use alloy::{
@@ -99,35 +99,34 @@ async fn main() -> Result<()> {
         rust::execution_engine::ExecutionEngine::channel(std::num::NonZeroUsize::new(8).unwrap());
     // Defaults evaluate WETH cycles only. This example never signs or sends orders.
     let execution_config = rust::execution_engine::policy::ExecutionConfig::default();
+    execution_config.validate()?;
+
     let mut engine_task = engine.spawn(move |batch| {
         let config = execution_config.clone();
         async move {
             let block_hash = batch.context.block_hash;
             for result in &batch.results {
                 debug!(
-                    "----Arb Path---\nPath: {:#?}\nAmount in: {}\nSimulated amount out: {}\nPercentage gain: {}%",
+                    "----Arb Path---\nPath: {:#?}\nAmount in: {}\nSimulated amount out: {}\nPercentage gain: {}",
                     result.path_snapshot,
                     result.amount_in,
                     result.amount_out,
-                    amms::amms::math::format_percent_bp(&result.pct_gain_bp),
+                    format_percent_bp(&result.pct_gain_bp),
                 );
             }
             let candidates = tokio::task::spawn_blocking(move || {
-                rust::execution_engine::policy::evaluate_batch(batch, &config)
+                evaluate_batch_and_map_err(batch, &config)
             })
             .await??;
-            info!(
-                "Dry run: {} candidates for block {}",
-                candidates.len(),
-                block_hash
-            );
             for candidate in candidates {
                 info!(
-                    "Candidate {}: input={}, output={}, estimated net profit={} (expected gas cost={}, maximum gas budget={})",
+                    "Candidate {}: block_hash={}, input={}, output={}, estimated net profit={}, pct_gain_bp={} (expected gas cost={}, maximum gas budget={})",
                     candidate.path_snapshot.id(),
+                    block_hash,
                     candidate.amount_in,
                     candidate.amount_out,
                     candidate.net_profit,
+                    format_percent_bp(&candidate.pct_gain_bp),
                     candidate.expected_gas_cost,
                     candidate.max_gas_cost
                 );

@@ -26,7 +26,8 @@ impl ExecutionEngine {
     /// Runs execution policy in a separate Tokio task.
     ///
     /// Dropping all senders drains the queue and stops the engine. A handler error
-    /// stops the engine, closes the receiver, and is returned through the task.
+    /// stops the engine unless it is a recoverable BatchEvaluationError, which is
+    /// logged before continuing with the next batch.
     /// The handler is responsible for fee estimates, optimisation, fresh-state
     /// validation, and submission. This task does not submit orders on its own.
     pub fn spawn<H, F>(self, handler: H) -> JoinHandle<Result<()>>
@@ -44,9 +45,14 @@ impl ExecutionEngine {
     {
         while let Some(batch) = self.batches.recv().await {
             let block_hash = batch.context.block_hash;
-            handler(batch)
-                .await
-                .with_context(|| format!("Execution engine failed for block {block_hash}"))?;
+            if let Err(error) = handler(batch).await {
+                if error.is::<policy::BatchEvaluationError>() {
+                    log::warn!("Skipping failed execution batch for block {block_hash}: {error:#}");
+                    continue;
+                }
+                return Err(error)
+                    .with_context(|| format!("Execution engine failed for block {block_hash}"));
+            }
         }
         Ok(())
     }
@@ -106,6 +112,54 @@ mod tests {
         let error = task.await.unwrap().unwrap_err();
         assert!(format!("{error:#}").contains("policy failed"));
         assert!(sender.send(batch(2)).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn invalid_batch_is_skipped_and_next_batch_is_processed() {
+        let (sender, engine) = ExecutionEngine::channel(NonZeroUsize::new(2).unwrap());
+        let mut invalid = batch(1);
+        Arc::make_mut(&mut invalid.context).base_fee_per_gas = None;
+        sender.send(invalid).await.unwrap();
+        sender.send(batch(2)).await.unwrap();
+        drop(sender);
+        let processed = Arc::new(Mutex::new(Vec::new()));
+        let observed = Arc::clone(&processed);
+        engine
+            .run(move |batch| {
+                let observed = Arc::clone(&observed);
+                async move {
+                    let hash = batch.context.block_hash;
+                    policy::evaluate_batch_and_map_err(batch, &policy::ExecutionConfig::default())?;
+                    observed.lock().unwrap().push(hash);
+                    Ok(())
+                }
+            })
+            .await
+            .unwrap();
+        assert_eq!(*processed.lock().unwrap(), vec![B256::repeat_byte(2)]);
+    }
+
+    #[tokio::test]
+    async fn invalid_config_stops_consumer_even_for_a_bad_batch() {
+        let (sender, engine) = ExecutionEngine::channel(NonZeroUsize::new(2).unwrap());
+        let mut invalid = batch(1);
+        Arc::make_mut(&mut invalid.context).base_fee_per_gas = None;
+        sender.send(invalid).await.unwrap();
+        sender.send(batch(2)).await.unwrap();
+        let error = engine
+            .run(|batch| async move {
+                let config = policy::ExecutionConfig {
+                    chain_id: 0,
+                    ..Default::default()
+                };
+                policy::evaluate_batch_and_map_err(batch, &config)?;
+                Ok(())
+            })
+            .await
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("chain ID is required"));
+        assert!(!error.is::<policy::BatchEvaluationError>());
+        assert!(sender.send(batch(3)).await.is_err());
     }
 
     #[tokio::test]
