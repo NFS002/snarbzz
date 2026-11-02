@@ -4,10 +4,13 @@ use amms::amms::{amm::AMM, factory::Factory, math::format_percent_bp, uniswap_v2
 use anyhow::Result;
 use futures::StreamExt;
 use log::{debug, info};
-use rust::{constants::{
-    Env, MIN_WETH_THRESHOLD, TEST_POOLS, UNISWAP_V2_FACTORY_ADDRESS, UNISWAP_V3_FACTORY_ADDRESS,
-    WETH_ADDRESS,
-}, execution_engine::policy::{evaluate_batch_and_map_err}};
+use rust::{
+    constants::{
+        Env, MIN_WETH_THRESHOLD, TEST_POOLS, UNISWAP_V2_FACTORY_ADDRESS,
+        UNISWAP_V3_FACTORY_ADDRESS, WETH_ADDRESS,
+    },
+    execution_engine::policy::evaluate_batch_and_map_err,
+};
 use url::Url;
 
 use alloy::{
@@ -120,7 +123,7 @@ async fn main() -> Result<()> {
             .await??;
             for candidate in candidates {
                 info!(
-                    "Candidate {}: block_hash={}, input={}, output={}, estimated net profit={}, pct_gain_bp={} (expected gas cost={}, maximum gas budget={})",
+                    "Candidate {}: block_hash={}, input={}, output={}, estimated net profit={}, gross_gain_pct={}% (expected gas cost={}, maximum gas budget={})\n\n{}",
                     candidate.path_snapshot.id(),
                     block_hash,
                     candidate.amount_in,
@@ -128,7 +131,8 @@ async fn main() -> Result<()> {
                     candidate.net_profit,
                     format_percent_bp(&candidate.pct_gain_bp),
                     candidate.expected_gas_cost,
-                    candidate.max_gas_cost
+                    candidate.max_gas_cost,
+                    candidate.path_snapshot
                 );
             }
             Ok(())

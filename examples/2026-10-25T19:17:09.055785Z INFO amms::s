@@ -97,4 +97,19 @@ uni2-wurLd5:
  target="state_space::subscribe"
 
 
- If you look at these sample logs, you will see that I am logging the first 10 pools of the state space after each block 
+ If you look at these sample logs, you will see that I am logging the first 10 pools of the state space after each block, 
+ but i would like to log only the most recently affected pools, so i can track the reserve values through the logs. 
+ Use the same log format as is currently used, but with a flag to indicate whether all pools or only recently affected pools should be logged.
+ Use f.alternate() as this flag `if possible:
+ 
+ ```
+core::fmt::Formatter
+impl<'a> Formatter<'a>
+pub fn alternate(&self) -> bool
+Determines if the # flag was specified.
+````
+
+I would like the logging rules to be:
+
+ 1. When the state space is synced, all pools are logged.
+ 2. When logging as part of subscribe(), only log pools affected in the last block.

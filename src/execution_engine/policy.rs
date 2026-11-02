@@ -2,7 +2,7 @@
 use std::{collections::HashSet, sync::Arc};
 
 use alloy::primitives::{Address, I256, U256};
-use amms::amms::path::{SimulationBatch, SimulationContext, UniswapArbPathSnapshot};
+use amms::amms::{math::percentage_change_bp, path::{SimulationBatch, SimulationContext, UniswapArbPathSnapshot}};
 use anyhow::{ensure, Result};
 use itertools::Itertools;
 use log::{debug, info};
@@ -210,7 +210,6 @@ fn evaluate_batch(
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
     for result in batch.results {
-        let pct_gain_bp = result.pct_gain_bp;
         let path = result.path_snapshot;
         let path_id = path.id();
         let block_hash = batch.context.block_hash;
@@ -240,6 +239,10 @@ fn evaluate_batch(
             .and_then(|v| v.checked_add(config.min_net_profit))
         else {
             debug!("Rejecting path {path_id} in block {block_hash}: profit floor overflow");
+            continue;
+        };
+        let Some(pct_gain_bp) = percentage_change_bp(amount_in, amount_out).ok() else {
+            debug!("Rejecting path {path_id} in block {block_hash}: unable to calculate percentage_gain");
             continue;
         };
         // Divide first to avoid an intermediate multiplication overflowing U256.
